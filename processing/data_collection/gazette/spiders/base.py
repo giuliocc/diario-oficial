@@ -1,8 +1,10 @@
-# -*- coding: utf-8 -*-
+import json
 import re
-from datetime import datetime
+from datetime import date, datetime
 
 import dateparser
+from dateutil.rrule import DAILY, rrule
+from fake_useragent import UserAgent
 import scrapy
 
 from gazette.items import Gazette
@@ -16,6 +18,63 @@ class BaseGazetteSpider(scrapy.Spider):
             parsed_data = dateparser.parse(start_date)
             if parsed_data is not None:
                 self.start_date = parsed_data.date()
+
+
+class DiarioMunicipalSigpubGazetteSpider(BaseGazetteSpider):
+    custom_settings = {"USER_AGENT": UserAgent().random}
+
+    def start_requests(self):
+        yield scrapy.Request(self.CALENDAR_URL, callback=self.parse_calendar)
+
+    def parse_calendar(self, response):
+        formdata = {
+            "calendar[_token]": response.xpath(
+                "//input[@id='calendar__token']/@value"
+            ).get()
+        }
+        available_dates = rrule(
+            freq=DAILY, dtstart=self.FIRST_AVAILABLE_DATE, until=date.today()
+        )
+        for query_date in available_dates:
+            formdata.update(
+                {
+                    "calendar[day]": str(query_date.day),
+                    "calendar[month]": str(query_date.month),
+                    "calendar[year]": str(query_date.year),
+                }
+            )
+            editions = {
+                "regular": self.GAZETTE_INFO_URL,
+                "extra": self.EXTRA_GAZETTE_INFO_URL,
+            }
+            for edition_type, url in editions.items():
+                yield scrapy.FormRequest(
+                    url=url,
+                    formdata=formdata,
+                    meta={"date": query_date, "edition_type": edition_type},
+                    callback=self.parse_gazette_info,
+                )
+
+    def parse_gazette_info(self, response):
+        body = json.loads(response.text)
+        meta = response.meta
+
+        if "error" in body:
+            self.logger.warning(
+                f"{meta['edition_type'].capitalize()} Gazette not available for {meta['date'].date()}"
+            )
+            return
+
+        for edicao in body["edicao"]:
+            url = f"{body['url_arquivos']}{edicao['link_diario']}.pdf"
+            yield Gazette(
+                date=meta["date"],
+                file_urls=[url],
+                territory_id=self.TERRITORY_ID,
+                power="executive_legislative",
+                is_extra_edition=(meta["edition_type"] == "extra"),
+                scraped_at=datetime.utcnow(),
+            )
 
 
 class FecamGazetteSpider(BaseGazetteSpider):
