@@ -5,9 +5,10 @@ import os
 import subprocess
 
 from itemadapter import ItemAdapter
-from scrapy.exceptions import DropItem
+from scrapy.exceptions import DropItem, NotConfigured
 from scrapy.http import Request
 from scrapy.pipelines.files import FilesPipeline
+from scrapy.utils.misc import load_object
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
@@ -19,6 +20,31 @@ class GazetteDateFilteringPipeline:
         if hasattr(spider, "start_date"):
             if spider.start_date > item.get("date"):
                 raise DropItem("Droping all items before {}".format(spider.start_date))
+        return item
+
+
+class ParseFilePipeline:
+    def __init__(self, parser_module_path, parsed_files_dir):
+        self.parser_module_path = parser_module_path
+        self.parsed_files_dir = parsed_files_dir
+
+    @classmethod
+    def from_crawler(cls, crawler):
+        parser_module_path = getattr(crawler.spider, "parser", None)
+        if parser_module_path is None:
+            raise NotConfigured
+
+        files_storage_path = Path(crawler.settings["FILES_STORE"])
+        parsed_files_dir = files_storage_path / "parsed"
+
+        return cls(parser_module_path, parsed_files_dir)
+
+    def process_item(self, item, spider):
+        files_storage_path = Path(spider.settings["FILES_STORE"])
+        file_to_parse_path = files_storage_path / item["files"][0]["path"]
+        parser_store_path = self.parsed_files_dir / file_to_parse_path.stem
+        parser = load_object(self.parser_module_path)(str(parser_store_path))
+        parser.parse(str(file_to_parse_path))
         return item
 
 

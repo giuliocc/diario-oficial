@@ -5,6 +5,7 @@ ROBOTSTXT_OBEY = False
 ITEM_PIPELINES = {
     "gazette.pipelines.GazetteDateFilteringPipeline": 50,
     "scrapy.pipelines.files.FilesPipeline": 100,
+    "gazette.pipelines.ParseFilePipeline": 150,
     "gazette.pipelines.ExtractTextPipeline": 200,
 }
 SPIDER_MIDDLEWARES = {"scrapy_deltafetch.DeltaFetch": 100}
