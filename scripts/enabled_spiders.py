@@ -68,4 +68,5 @@ SPIDERS = [
     "sp_vinhedo",
     "to_araguaina",
     "to_palmas",
+    "to_porto_nacional",
 ]
