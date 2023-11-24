@@ -1,7 +1,6 @@
+import datetime as dt
 import re
-from datetime import date, datetime
 
-import dateutil
 import scrapy
 
 from gazette.items import Gazette
@@ -9,55 +8,37 @@ from gazette.spiders.base import BaseGazetteSpider
 
 
 class RnMossoroSpider(BaseGazetteSpider):
-
-    name = "rn_mossoro"
-    allowed_domains = ["jom.prefeiturademossoro.com.br"]
-
     TERRITORY_ID = "2408003"
-
-    def __init__(self, start_date=None, end_date=None, *args, **kwargs):
-        self.start_date = date(2008, 1, 1)
-
-        super(RnMossoroSpider, self).__init__(start_date, end_date, *args, **kwargs)
-
-        self.logger.debug(
-            "Start date is {date}".format(date=self.start_date.isoformat())
-        )
-        self.logger.debug("End date is {date}".format(date=self.end_date.isoformat()))
-
-    def start_requests(self):
-
-        for year in range(self.start_date.year, self.end_date.year + 1):
-            for month in range(self.start_date.month, self.end_date.month + 1):
-                base_url = f"http://jom.prefeiturademossoro.com.br/{year}/{month}/"
-                yield scrapy.Request(base_url)
+    name = "rn_mossoro"
+    start_date = dt.date(2023, 1, 1)
+    allowed_domains = ["dom.mossoro.rn.gov.br"]
+    start_urls = ["https://www.dom.mossoro.rn.gov.br/dom/edicoes"]
 
     def parse(self, response):
-        for entry in response.css("article.post.category-jom"):
+        for edition in response.css("div.edicoes-list div.col-md-3"):
+            url = edition.css("a::attr(href)").get()
+            raw_date = edition.css("div.card-content p::text").get().strip()
+            date = dt.datetime.strptime(raw_date, "%d/%m/%Y").date()
+            raw_edition_number = edition.css("div.card-content h4::text").get().strip()
+            edition_number = re.findall(r"DOM N. (\d+)", raw_edition_number)
 
-            url = entry.css("a:first-of-type::attr(href)").get()
-            datetime_meta = entry.css("time.published::attr(datetime)").get()
-            entry_date = dateutil.parser.isoparse(datetime_meta).date()
+            if date > self.end_date:
+                continue
+            elif date < self.start_date:
+                return
 
-            yield scrapy.Request(
-                url, meta={"date": entry_date}, callback=self.parse_gazette
+            yield Gazette(
+                date=date,
+                edition_number=edition_number,
+                file_urls=[f"https://www.dom.mossoro.rn.gov.br{url}"],
+                is_extra_edition=False,
+                power="executive_legislative",
             )
 
-        next_pages_links = response.css("a.page-numbers::attr(href)").getall()
-        for link in next_pages_links:
-            yield scrapy.Request(link)
-
-    def parse_gazette(self, response):
-        gazette_date = response.meta["date"]
-        file_url = response.css(".wp-block-file__button::attr(href)").get()
-        edition_regex = re.compile(r"JOM n\.º ([a-z0-9]+)$", re.IGNORECASE)
-        edition = response.css("h1.entry-title::text").re_first(edition_regex)
-        yield Gazette(
-            date=gazette_date,
-            edition_number=edition,
-            file_urls=[file_url],
-            is_extra_edition=False,
-            territory_id=self.TERRITORY_ID,
-            power="executive_legislative",
-            scraped_at=datetime.utcnow(),
-        )
+        next_page_url = response.xpath(
+            "//a[contains(text(), 'PRÓXIMA PÁGINA')]/@href"
+        ).get()
+        if next_page_url:
+            yield scrapy.Request(
+                f"https://www.dom.mossoro.rn.gov.br{next_page_url}", callback=self.parse
+            )

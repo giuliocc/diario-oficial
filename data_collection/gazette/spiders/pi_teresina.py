@@ -1,5 +1,4 @@
 import datetime
-from urllib.parse import urlencode
 
 import scrapy
 
@@ -8,6 +7,8 @@ from gazette.spiders.base import BaseGazetteSpider
 
 
 class PiTeresina(BaseGazetteSpider):
+    zyte_smartproxy_enabled = True
+
     TERRITORY_ID = "2211001"
     name = "pi_teresina"
     allowed_domains = ["dom.pmt.pi.gov.br"]
@@ -17,14 +18,9 @@ class PiTeresina(BaseGazetteSpider):
         initial_date = self.start_date.strftime("%d/%m/%Y")
         end_date = self.end_date.strftime("%d/%m/%Y")
 
-        params = {
-            "pagina": 1,
-            "filtra_data": initial_date,
-            "filtra_dataf": end_date,
-        }
-        url_params = urlencode(params)
+        url_params = f"pagina=1&filtra_data={initial_date}&filtra_dataf={end_date}"
         yield scrapy.Request(
-            f"http://dom.pmt.pi.gov.br/lista_diario.php?{url_params}",
+            f"https://dom.pmt.pi.gov.br/lista_diario.php?{url_params}",
         )
 
     def parse(self, response):

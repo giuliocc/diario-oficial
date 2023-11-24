@@ -1,5 +1,5 @@
-awscli
-boto3
+awscli==1.25.90
+boto3==1.24.89
 click
 chompjs
 dateparser
@@ -9,6 +9,7 @@ psycopg2-binary
 python-dateutil
 python-decouple
 scrapy
+scrapy-zyte-smartproxy
 schematics
 SQLAlchemy
 spidermon[monitoring]
